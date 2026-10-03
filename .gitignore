@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# PyTorch / training artifacts
+checkpoints/
+*.pt
+*.pth
+runs/
+lightning_logs/
+data/
+datasets/
+*.npy
+
+# C++ build
+engine/build/
+build/
+CMakeUserPresets.json
+
+# IDE
+.vscode/
+.idea/
