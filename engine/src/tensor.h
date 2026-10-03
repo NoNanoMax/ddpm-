@@ -17,6 +17,7 @@ struct Dims {
 
     Dims() = default;
     Dims(std::initializer_list<int64_t> v) : values(v) {}
+    explicit Dims(std::vector<int64_t> v) : values(std::move(v)) {}
 
     int64_t numel() const {
         int64_t n = 1;

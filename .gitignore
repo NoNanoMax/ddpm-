@@ -1,5 +1,6 @@
 engine/build
 checkpoints/
+data/
 *.pt
 *.ddpm
 __pycache__

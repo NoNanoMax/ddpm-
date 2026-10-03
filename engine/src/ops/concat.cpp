@@ -12,13 +12,16 @@ class ConcatOp : public Op {
         const Tensor& b = *in[1];
         Tensor& y = *out[0];
 
-        int64_t B = a.shape.values[0];
-        int64_t A = a.shape.values[1];
-        int64_t C = b.shape.values[1];
-        for (int64_t i = 0; i < B; ++i) {
-            float* dst = &y.data[i * (A + C)];
-            std::memcpy(dst, &a.data[i * A], A * sizeof(float));
-            std::memcpy(dst + A, &b.data[i * C], C * sizeof(float));
+        int64_t outer = 1;
+        for (size_t i = 0; i < a.shape.values.size() - 1; ++i)
+            outer *= a.shape.values[i];
+        int64_t A = a.shape.values.back();
+        int64_t C = b.shape.values.back();
+
+        for (int64_t r = 0; r < outer; ++r) {
+            float* dst = &y.data[r * (A + C)];
+            std::memcpy(dst, &a.data[r * A], A * sizeof(float));
+            std::memcpy(dst + A, &b.data[r * C], C * sizeof(float));
         }
     }
 };

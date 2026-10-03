@@ -23,8 +23,10 @@ class LinearBetaSchedule:
     def x_t_from_x_0(self, x_0: torch.Tensor, t: torch.Tensor, eps: torch.Tensor | None = None) -> torch.Tensor:
         if eps is None:
             eps = torch.randn_like(x_0)
-        abar = self.alpha_bar[t].view(-1, 1)  # (B,) → (B,1) для бродкаста
-        return (abar.sqrt() * x_0 + (1 - abar).sqrt() * eps, eps)
+        abar_t = self.alpha_bar[t]
+        for _ in range(x_0.dim() - 1):
+            abar_t = abar_t.unsqueeze(-1)
+        return (abar_t.sqrt() * x_0 + (1 - abar_t).sqrt() * eps, eps)
 
     def training_targets(self, x_0: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         b = x_0.shape[0]

@@ -1,7 +1,7 @@
 // CLI движка v0.
 //
 // Использование:
-//   ddpm-engine run <model.ddpm> --n <batch> --t <time> \
+//   ddpm-engine run <model.ddpm> --t <time> --in-shape "B,H,W,C" \
 //       [--in x.bin] [--out out.bin]
 //   ddpm-engine sample <model.ddpm> --n 4096 --t 256 \
 //       [--beta-start 0.0001] [--beta-end 0.02] [--seed 42] [--out samples.bin]
@@ -105,7 +105,14 @@ int main(int argc, char** argv) {
         usage();
         return 1;
     }
-    int n = std::stoi(arg_after("--n", argc, argv, "8"));
+    std::string in_shape_str = arg_after("--in-shape", argc, argv, "8,2");
+    std::vector<int64_t> in_shape;
+    {
+        std::istringstream is(in_shape_str);
+        std::string tok;
+        while (std::getline(is, tok, ',')) in_shape.push_back(std::stoll(tok));
+    }
+    int n = static_cast<int>(in_shape.front());
     int t = std::stoi(arg_after("--t", argc, argv, "17"));
     std::string in_path = arg_after("--in", argc, argv);
     std::string out_path = arg_after("--out", argc, argv, "out.bin");
@@ -114,8 +121,9 @@ int main(int argc, char** argv) {
     printf("loaded %s: %zu inputs, %zu outputs\n", path.c_str(),
            model.inputs().size(), model.outputs().size());
 
-    // вход x_t: (n, 2)
-    std::vector<float> x(static_cast<size_t>(n) * 2);
+    int64_t in_numel = 1;
+    for (auto d : in_shape) in_numel *= d;
+    std::vector<float> x(static_cast<size_t>(in_numel));
     if (!in_path.empty()) {
         std::ifstream f(in_path, std::ios::binary);
         f.read(reinterpret_cast<char*>(x.data()), x.size() * sizeof(float));
@@ -125,15 +133,14 @@ int main(int argc, char** argv) {
         for (auto& v : x) v = dist(rng);
     }
 
-    // вход t: (n,)
-    std::vector<float> tv(x.size() / 2, static_cast<float>(t));
+    std::vector<float> tv(n, static_cast<float>(t));
 
-    Tensor x_t({n, 2});
+    Tensor x_t{Dims(in_shape)};
     x_t.data = std::move(x);
     Tensor t_t({n});
     t_t.data = std::move(tv);
 
-    auto out = model.run({{"x_t", x_t}, {"t", t_t}});
+    auto out = model.run({{"x_t", std::move(x_t)}, {"t", std::move(t_t)}});
     const Tensor& y = out.at(0);
 
     std::ofstream f(out_path, std::ios::binary);

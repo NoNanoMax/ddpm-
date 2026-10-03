@@ -3,6 +3,6 @@
 #include "op.h"
 
 namespace ddpm {
-// Concat по последней оси: (B, A) и (B, C) → (B, A+C). 2D, v0.
+// Concat по ПОСЛЕДНЕЙ оси, N dim'ов: (B,H,W,A)+(B,H,W,C) → (B,H,W,A+C)
 std::unique_ptr<Op> make_concat();
 }  // namespace ddpm

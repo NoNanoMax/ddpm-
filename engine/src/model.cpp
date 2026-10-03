@@ -4,16 +4,21 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "ops/add.h"
+#include "ops/attention.h"
 #include "ops/concat.h"
+#include "ops/conv2d.h"
+#include "ops/groupnorm.h"
 #include "ops/linear.h"
 #include "ops/silu.h"
 #include "ops/sincos.h"
+#include "ops/upsample.h"
 
 namespace ddpm {
 
 namespace {
 
-// shape выходов op по shape'ам входов (v0: только 2D-кейсы, достаточно для toy)
+// shape выходов op по shape'ам входов
 Dims infer_shape(const OpDef& def,
                  const std::map<std::string, Tensor>& vars,
                  int batch) {
@@ -21,13 +26,36 @@ Dims infer_shape(const OpDef& def,
         const Tensor& W = vars.at(def.inputs[1]);
         return {static_cast<int64_t>(batch), W.shape.values[0]};
     }
-    if (def.type == "silu")
+    if (def.type == "silu" || def.type == "groupnorm" || def.type == "add")
         return vars.at(def.inputs[0]).shape;
+    if (def.type == "addb")
+        return vars.at(def.inputs[0]).shape;
+    if (def.type == "conv2d") {
+        const Tensor& x = vars.at(def.inputs[0]);
+        int kh = def.attrs.at("kh"), kw = def.attrs.at("kw");
+        int stride = def.attrs.at("stride"), pad = def.attrs.at("pad");
+        int64_t H = x.shape.values[1], Wd = x.shape.values[2];
+        int64_t Ho = (H + 2 * pad - kh) / stride + 1;
+        int64_t Wo = (Wd + 2 * pad - kw) / stride + 1;
+        const Tensor& W = vars.at(def.inputs[1]);
+        return {static_cast<int64_t>(batch), Ho, Wo, W.shape.values[0]};
+    }
+    if (def.type == "upsample") {
+        const Tensor& x = vars.at(def.inputs[0]);
+        int s = def.attrs.at("scale");
+        return {static_cast<int64_t>(batch), x.shape.values[1] * s,
+                x.shape.values[2] * s, x.shape.values[3]};
+    }
+    if (def.type == "attention") {
+        const Tensor& x = vars.at(def.inputs[0]);
+        Dims d = x.shape;  // (B,H,W,3C) → (B,H,W,C)
+        d.values.back() /= 3;
+        return d;
+    }
     if (def.type == "concat") {
-        const Tensor& a = vars.at(def.inputs[0]);
-        const Tensor& b = vars.at(def.inputs[1]);
-        return {static_cast<int64_t>(batch),
-                a.shape.values[1] + b.shape.values[1]};
+        Dims d = vars.at(def.inputs[0]).shape;
+        d.values.back() += vars.at(def.inputs[1]).shape.values.back();
+        return d;
     }
     if (def.type == "sincos")
         return {static_cast<int64_t>(batch),
@@ -42,23 +70,24 @@ OpDef parse_op_line(const std::string& line) {
     OpDef def;
     def.type = type;
     std::string tok;
+    bool in_attrs = false;
+    auto parse_attr = [&](std::string t) {
+        if (!t.empty() && t.front() == '{') t = t.substr(1);
+        if (!t.empty() && t.back() == '}') t.pop_back();
+        auto pos = t.find('=');
+        def.attrs[t.substr(0, pos)] = std::stoi(t.substr(pos + 1));
+    };
     while (is >> tok) {
-        if (tok == "{") {
-            while (is >> tok && tok != "}") {
-                auto pos = tok.find('=');
-                def.attrs[tok.substr(0, pos)] = std::stoi(tok.substr(pos + 1));
-            }
-        } else {
-            if (!tok.empty() && tok.front() == '{') {
-                tok = tok.substr(1);
-                auto pos = tok.find('=');
-                def.attrs[tok.substr(0, pos)] = std::stoi(tok.substr(pos + 1));
-                if (tok.back() == '}') continue;
-                tok.clear();
-                continue;
-            }
-            def.inputs.push_back(tok);
+        if (in_attrs) {
+            parse_attr(tok);
+            continue;
         }
+        if (!tok.empty() && tok.front() == '{') {
+            in_attrs = true;
+            parse_attr(tok);
+            continue;
+        }
+        def.inputs.push_back(tok);
     }
     def.output = def.inputs.back();
     def.inputs.pop_back();
@@ -134,10 +163,26 @@ Model Model::load(const std::string& path) {
 
     // строим ops
     m.ops_.reserve(m.opdefs_.size());
-    for (const auto& d : m.opdefs_) {
+    for (int idx = 0; idx < static_cast<int>(m.opdefs_.size()); ++idx) {
+        const auto& d = m.opdefs_[idx];
         if (d.type == "linear") m.ops_.push_back(make_linear());
         else if (d.type == "silu") m.ops_.push_back(make_silu());
         else if (d.type == "concat") m.ops_.push_back(make_concat());
+        else if (d.type == "add") m.ops_.push_back(make_add());
+        else if (d.type == "addb") m.ops_.push_back(make_addb());
+        else if (d.type == "upsample") m.ops_.push_back(make_upsample(d.attrs.at("scale")));
+        else if (d.type == "attention") m.ops_.push_back(make_attention());
+        else if (d.type == "groupnorm") m.ops_.push_back(make_groupnorm(d.attrs.at("groups")));
+        else if (d.type == "conv2d") {
+            auto get = [&](const char* k) {
+                auto it = d.attrs.find(k);
+                if (it == d.attrs.end())
+                    throw std::runtime_error("conv2d op #" + std::to_string(idx) +
+                                             ": no attr " + k);
+                return it->second;
+            };
+            m.ops_.push_back(make_conv2d(get("kh"), get("kw"), get("stride"), get("pad")));
+        }
         else if (d.type == "sincos")
             m.ops_.push_back(make_sincos(d.attrs.at("half_dim")));
         else

@@ -19,6 +19,8 @@ import argparse
 from pathlib import Path
 
 import numpy as np
+
+from unet_converter import convert_unet
 import torch
 
 
@@ -85,7 +87,10 @@ def main():
     args = p.parse_args()
 
     ckpt = torch.load(args.pt, weights_only=True)
-    convert(ckpt["model_state"], ckpt["config"], Path(args.out))
+    if "base" in ckpt["config"]:  # UNet
+        convert_unet(ckpt["model_state"], ckpt["config"], Path(args.out))
+    else:  # EpsMLP
+        convert(ckpt["model_state"], ckpt["config"], Path(args.out))
 
 
 if __name__ == "__main__":
