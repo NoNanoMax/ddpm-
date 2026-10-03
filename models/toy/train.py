@@ -1,12 +1,6 @@
 """Toy DDPM: обучение на 2D-смеси гауссов.
 
-Данные — 4 гауссовых «пятна» + кольцо. Весь цикл:
-  1. берём чистые x_0
-  2. берём случайный t, добавляем шум за один прыжок → x_t
-  3. модель предсказывает eps
-  4. loss = MSE(pred, eps) — и весь loss функции DDPM (v1)
-
-Запуск (быстро, CPU):
+Запуск:
   python models/toy/train.py
   python models/toy/train.py --steps 5000 --device cuda
 """
@@ -38,10 +32,6 @@ def make_dataset(n: int = 20_000, seed: int = 0) -> torch.Tensor:
 def sample(model: nn.Module, sched: LinearBetaSchedule, n: int = 4096,
            device: str = "cpu") -> torch.Tensor:
     """Reverse process: x_T ~ N(0, I) → T шагов к x_0.
-
-    Формула шага (epsilon-predictor):
-      x_{t-1} = 1/sqrt(alpha_t) * (x_t - beta_t/sqrt(1-abar_t) * pred_eps) + sigma_t * z
-    где z ~ N(0,I) — НОВЫЙ шум на каждом шаге (кроме t=0).
     """
     device = torch.device(device)
     model.eval()
@@ -97,7 +87,6 @@ def main():
         }, args.save)
         print(f"saved → {args.save}")
 
-    # Текстовое "ascii-plot": сразу видно, что точки собрались в 4 пятна
     grid = torch.zeros(32, 32)
     ix = ((out[:, 0] + 2) / 4 * 31).long().clamp(0, 31)
     iy = ((out[:, 1] + 2) / 4 * 31).long().clamp(0, 31)

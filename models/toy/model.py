@@ -1,12 +1,4 @@
 """Базовый epsilon-predictor на MLP для toy-моделей (2D данные).
-
-Почему MLP, а не U-Net: для 2D-вектора (смесь гауссов) пространственной
-иерархии нет, MLP — честная минимальная архитектура, на которой видно
-сам процесс. U-Net появится на MNIST.
-
-Синусоидальный embedding времени — тот же, что в оригинальной статье DDPM.
-Модель должна UЗНАВАТЬ, какой сейчас уровень шума, чтобы предсказать
-именно тот шум, что был добавлен.
 """
 from __future__ import annotations
 
@@ -22,7 +14,6 @@ class SinusoidalTimeEmbedding(nn.Module):
 
     def forward(self, t: torch.Tensor) -> torch.Tensor:
         # t: (B,) → embedding: (B, dim)
-        # Частоты логарифмически от 1 до 10000 — классический приём из Transformer'ов
         half = self.half_dim
         freqs = torch.exp(-torch.arange(half, device=t.device, dtype=t.dtype)
                           * (torch.log(torch.tensor(10000.0)) / (half - 1)))
@@ -31,9 +22,6 @@ class SinusoidalTimeEmbedding(nn.Module):
 
 
 class EpsMLP(nn.Module):
-    """Простой U-Net-подобный (residual) MLP: x и embedding времени
-    склеиваются, прогоняются через hidden-слои, предсказывается eps той же
-    размерности, что и x."""
 
     def __init__(self, in_dim: int, hidden: int = 256, depth: int = 4, time_dim: int = 64):
         super().__init__()
