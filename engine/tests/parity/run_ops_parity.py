@@ -108,16 +108,16 @@ def check_upsample():
     x = torch.randn(1, 2, 3, 4)
     ref = F.interpolate(x, scale_factor=2, mode="nearest").numpy()
     xn = x.permute(0, 2, 3, 1).numpy()
-    graph = ("DDPM-V0\ninput x_t 4 1 2 3 4\n"
+    graph = ("DDPM-V0\ninput x_t 4 1 3 4 2\n"
              "op 0 upsample x_t out {scale=2}\noutput out")
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
         (td / "m.ddpm").write_bytes((graph + "\nweights\n").encode())
         (td / "in.bin").write_bytes(xn.tobytes())
         subprocess.run([ENGINE, "run", str(td / "m.ddpm"), "--t", "0",
-                        "--in-shape", "1,2,3,4", "--in", str(td / "in.bin"),
+                        "--in-shape", "1,3,4,2", "--in", str(td / "in.bin"),
                         "--out", str(td / "out.bin")], check=True)
-        out = np.fromfile(td / "out.bin", dtype=np.float32).reshape(1, 4, 6, 4)
+        out = np.fromfile(td / "out.bin", dtype=np.float32).reshape(1, 6, 8, 2)
     d = np.abs(out - ref.transpose(0, 2, 3, 1)).max()
     print(f"upsample  diff={d:.2e}")
     return d == 0

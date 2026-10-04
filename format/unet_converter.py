@@ -1,8 +1,3 @@
-"""Участок конвертера для U-Net (models/mnist/unet.py).
-
-Веса conv'ов (O,I,kh,kw) переезжают без перестановки — NHWC-ядро
-ждет именно такой порядок. Данные x в графе — NHWC.
-"""
 from __future__ import annotations
 
 import numpy as np
@@ -158,8 +153,9 @@ def convert_unet(state: dict, cfg: dict, out_path) -> None:
         L.append(f"op {op_i} conv2d ups{i}.s {wn} {bn} upc{i} {{kh=3 kw=3 stride=1 pad=1}}"); op_i += 1
         L.append(f"op {op_i} concat upc{i} {skips[stage]} cat{i}"); op_i += 1
         for j in range(2):
+            has_skip = f"up.{i}.{j}.skip.weight" in state
             block(f"u{i}_{j}", f"cat{i}" if j == 0 else f"u{i}_{j - 1}.out",
-                  f"up.{i}.{j}", None)
+                  f"up.{i}.{j}", "yes" if has_skip else None)
         prev = f"u{i}_{1}.out"
 
     # head

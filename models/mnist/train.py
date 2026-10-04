@@ -64,6 +64,8 @@ def main():
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--save", default="checkpoints/mnist_ddpm.pt")
     p.add_argument("--ckpt", default=None)
+    p.add_argument("--resume", action="store_true")
+    p.add_argument("--save-every", type=int, default=10000)
     p.add_argument("--sample", action="store_true")
     p.add_argument("--data", default="data/mnist")
     p.add_argument("--plot-every", type=int, default=1000)
@@ -82,18 +84,33 @@ def main():
         x = ddim_sample(model, sched, n=256, steps=50, device=args.device)
         Path(args.save).parent.mkdir(parents=True, exist_ok=True)
         grid = (x.clamp(-1, 1) + 1) / 2
-        torchvision_grid = make_grid(grid)
-        torchvision_grid.save(Path(args.save).parent / "mnist_samples.png")
+        save_image(grid.cpu(), Path(args.save).parent / "mnist_samples.png")
         print(f"saved {Path(args.save).parent / 'mnist_samples.png'}")
         return
 
+    Path(args.save).parent.mkdir(parents=True, exist_ok=True)
     loader = get_loader(args.bs, args.data)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     scaler = torch.cuda.amp.GradScaler() if device.type == "cuda" else None
+    start = 0
+
+    def save(ckpt_path, step):
+        torch.save({"model_state": model.state_dict(),
+                    "opt_state": opt.state_dict(),
+                    "step": step,
+                    "config": {"base": 128, "num_t": args.num_t, "lr": args.lr}}, ckpt_path)
+        print(f"saved → {ckpt_path} (step {step})", flush=True)
+
+    if args.resume:
+        ckpt = torch.load(args.save, map_location=device, weights_only=False)
+        model.load_state_dict(ckpt["model_state"])
+        opt.load_state_dict(ckpt["opt_state"])
+        start = ckpt["step"] + 1
+        print(f"resuming from step {start}", flush=True)
 
     model.train()
     it = iter(loader)
-    for step in range(args.steps):
+    for step in range(start, args.steps):
         try:
             x0, _ = next(it)
         except StopIteration:
@@ -113,13 +130,12 @@ def main():
         opt.zero_grad()
         if step % args.plot_every == 0 or step == args.steps - 1:
             print(f"step {step:6d}  loss {loss.item():.5f}", flush=True)
+        if (step + 1) % args.save_every == 0 or step == args.steps - 1:
+            save(args.save, step + 1)
 
-    Path(args.save).parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"model_state": model.state_dict(),
-                "config": {"base": 128, "num_t": args.num_t}}, args.save)
-    print(f"saved → {args.save}")
+    save(args.save, args.steps)
 
 
 if __name__ == "__main__":
-    from torchvision.utils import make_grid  # локально, не тянуть на старте
+    from torchvision.utils import save_image  # локально, не тянуть на старте
     main()

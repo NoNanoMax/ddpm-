@@ -9,6 +9,7 @@
 #include "ops/concat.h"
 #include "ops/conv2d.h"
 #include "ops/groupnorm.h"
+#include "ops/identity.h"
 #include "ops/linear.h"
 #include "ops/silu.h"
 #include "ops/sincos.h"
@@ -26,7 +27,7 @@ Dims infer_shape(const OpDef& def,
         const Tensor& W = vars.at(def.inputs[1]);
         return {static_cast<int64_t>(batch), W.shape.values[0]};
     }
-    if (def.type == "silu" || def.type == "groupnorm" || def.type == "add")
+    if (def.type == "silu" || def.type == "groupnorm" || def.type == "add" || def.type == "identity")
         return vars.at(def.inputs[0]).shape;
     if (def.type == "addb")
         return vars.at(def.inputs[0]).shape;
@@ -172,6 +173,7 @@ Model Model::load(const std::string& path) {
         else if (d.type == "addb") m.ops_.push_back(make_addb());
         else if (d.type == "upsample") m.ops_.push_back(make_upsample(d.attrs.at("scale")));
         else if (d.type == "attention") m.ops_.push_back(make_attention());
+        else if (d.type == "identity") m.ops_.push_back(make_identity());
         else if (d.type == "groupnorm") m.ops_.push_back(make_groupnorm(d.attrs.at("groups")));
         else if (d.type == "conv2d") {
             auto get = [&](const char* k) {
